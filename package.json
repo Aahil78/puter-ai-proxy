@@ -1,0 +1,17 @@
+{
+  "name": "puter-ai-proxy",
+  "version": "1.0.0",
+  "description": "An Anthropic-compatible proxy server that routes API requests through Puter.js to the GLM-5.1 model, enabling Claude Code and other Anthropic API clients to use Puter's free AI infrastructure.",
+  "main": "puter-proxy.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@heyputer/puter.js": "^2.2.15",
+    "express": "^5.2.1"
+  }
+}

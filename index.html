@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLM-5.1 Chat via Puter Proxy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div class="max-w-3xl mx-auto p-4">
+        <h1 class="text-2xl font-bold mb-6 text-center py-4">GLM-5.1 Chat (Puter.js Proxy)</h1>
+        
+        <div id="messages" class="space-y-4 mb-6 max-h-[60vh] overflow-y-auto p-4"></div>
+        
+        <div class="flex gap-2">
+            <input 
+                id="prompt" 
+                type="text" 
+                placeholder="Type your message..."
+                class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500"
+            >
+            <button 
+                id="sendBtn"
+                class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-medium transition"
+            >
+                Send
+            </button>
+        </div>
+        
+        <div id="status" class="text-sm text-gray-500 mt-3 text-center"></div>
+    </div>
+
+    <script>
+        const messagesEl = document.getElementById('messages');
+        const promptEl = document.getElementById('prompt');
+        const sendBtn = document.getElementById('sendBtn');
+        const statusEl = document.getElementById('status');
+
+        let messageHistory = [];
+
+        function addMessage(role, content, isStreaming = false) {
+            const id = `msg-${Date.now()}`;
+            const bubbleClass = role === 'user' 
+                ? 'bg-blue-600 ml-auto max-w-[80%]' 
+                : 'bg-gray-800 mr-auto max-w-[80%]';
+            
+            messagesEl.innerHTML += `
+                <div class="flex ${role === 'user' ? 'justify-end' : 'justify-start'}">
+                    <div class="${bubbleClass} rounded-xl px-4 py-3">
+                        <div class="text-xs opacity-70 mb-1">${role.toUpperCase()}</div>
+                        <div id="${id}">${content}</div>
+                    </div>
+                </div>
+            `;
+            
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+            return id;
+        }
+
+        async function sendMessage() {
+            const prompt = promptEl.value.trim();
+            if (!prompt) return;
+            
+            promptEl.value = '';
+            sendBtn.disabled = true;
+            statusEl.textContent = 'Connecting...';
+            
+            addMessage('user', prompt);
+            messageHistory.push({ role: 'user', content: prompt });
+
+            try {
+                statusEl.textContent = 'Waiting for response...';
+                
+                const response = await fetch('http://localhost:3000/v1/messages', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer dummy'
+                    },
+                    body: JSON.stringify({
+                        messages: messageHistory,
+                        stream: true,
+                        model: 'glm-5.1'
+                    })
+                });
+
+                if (!response.ok) throw new Error('Server error');
+                
+                statusEl.textContent = 'Receiving stream...';
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                
+                const assistantMsgId = addMessage('assistant', '▌', true);
+                let fullResponse = '';
+
+                while(true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n\n').filter(l => l.trim());
+                    
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        
+                        try {
+                            const data = JSON.parse(line.substring(6));
+                            
+                            if (data.type === 'content_block_delta') {
+                                fullResponse += data.delta.text;
+                                document.getElementById(assistantMsgId).textContent = fullResponse + ' ▌';
+                            }
+                            
+                            if (data.type === 'message_stop') {
+                                document.getElementById(assistantMsgId).textContent = fullResponse;
+                                messageHistory.push({ role: 'assistant', content: fullResponse });
+                                statusEl.textContent = 'Response complete';
+                            }
+                        } catch(e) {}
+                    }
+                    
+                    messagesEl.scrollTop = messagesEl.scrollHeight;
+                }
+
+            } catch (e) {
+                statusEl.textContent = `Error: ${e.message}`;
+                addMessage('system', `❌ Error: ${e.message}`);
+            }
+            
+            sendBtn.disabled = false;
+        }
+
+        sendBtn.addEventListener('click', sendMessage);
+        promptEl.addEventListener('keydown', e => e.key === 'Enter' && sendMessage());
+        
+        addMessage('system', '✅ Proxy connected. Start chatting with GLM-5.1!');
+    </script>
+</body>
+</html>
